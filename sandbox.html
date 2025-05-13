@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>Sandbox</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #111; }
+    #info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: white;
+      font-family: sans-serif;
+      font-size: 16px;
+      z-index: 1;
+    }
+  </style>
+</head>
+<body>
+<div id="info">
+  WASD = Bewegen | Maus = Kamera | Linksklick = Bauen | Rechtsklick = Abbauen<br>
+  1 = Erde | 2 = Stein | 3 = Glas | Aktueller Block: <span id="blockType">Erde</span>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.153.0/build/three.min.js"></script>
+<script>
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer();
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// Licht
+const light = new THREE.DirectionalLight(0xffffff, 1);
+light.position.set(50, 100, 50);
+scene.add(light);
+
+// Materialien
+const materials = {
+  1: new THREE.MeshPhongMaterial({ color: 0x8B4513 }), // Erde
+  2: new THREE.MeshPhongMaterial({ color: 0xaaaaaa }), // Stein
+  3: new THREE.MeshPhongMaterial({ color: 0x55ccff, transparent: true, opacity: 0.5 }) // Glas
+};
+let currentMaterial = 1;
+document.getElementById("blockType").textContent = "Erde";
+
+// Plattform generieren
+const blocks = [];
+const blockSize = 1;
+const groundSize = 100;
+
+for (let x = -groundSize / 2; x < groundSize / 2; x++) {
+  for (let z = -groundSize / 2; z < groundSize / 2; z++) {
+    const block = new THREE.Mesh(
+      new THREE.BoxGeometry(blockSize, 0.1, blockSize),
+      new THREE.MeshPhongMaterial({ color: 0x333333 })
+    );
+    block.position.set(x, 0, z);
+    scene.add(block);
+    blocks.push(block);
+  }
+}
+
+// Kamera & Startposition
+camera.position.set(0, 10, 15);
+camera.lookAt(0, 0, 0);
+
+// Steuerung
+const keys = {};
+let angle = 0;
+let isMouseDown = false;
+let lastX = 0;
+
+document.addEventListener("keydown", e => {
+  keys[e.key.toLowerCase()] = true;
+  if (["1", "2", "3"].includes(e.key)) {
+    currentMaterial = parseInt(e.key);
+    const name = {1: "Erde", 2: "Stein", 3: "Glas"}[e.key];
+    document.getElementById("blockType").textContent = name;
+  }
+});
+document.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
+
+document.addEventListener("mousedown", e => {
+  isMouseDown = true;
+  lastX = e.clientX;
+});
+document.addEventListener("mouseup", () => isMouseDown = false);
+document.addEventListener("mousemove", e => {
+  if (isMouseDown) {
+    angle -= (e.clientX - lastX) * 0.005;
+    lastX = e.clientX;
+  }
+});
+
+// Raycasting zum Platzieren
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+renderer.domElement.addEventListener("pointerdown", (event) => {
+  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+  const intersects = raycaster.intersectObjects(scene.children);
+
+  if (intersects.length > 0) {
+    const hit = intersects[0];
+    const pos = hit.object.position.clone();
+
+    if (event.button === 0) {
+      // Linksklick: Block setzen
+      const normal = hit.face.normal.clone();
+      const newPos = pos.add(normal).round();
+      const newBlock = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), materials[currentMaterial]);
+      newBlock.position.copy(newPos);
+      scene.add(newBlock);
+    } else if (event.button === 2) {
+      // Rechtsklick: Block entfernen
+      if (hit.object.geometry.parameters.height !== 0.1) {
+        scene.remove(hit.object);
+      }
+    }
+  }
+});
+document.addEventListener("contextmenu", e => e.preventDefault()); // Rechtsklick blockieren
+
+// Bewegung & Kamera
+function animate() {
+  requestAnimationFrame(animate);
+  const speed = 0.1;
+  const forward = new THREE.Vector3(Math.sin(angle), 0, Math.cos(angle));
+  const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0));
+
+  if (keys["w"]) camera.position.addScaledVector(forward, speed);
+  if (keys["s"]) camera.position.addScaledVector(forward, -speed);
+  if (keys["a"]) camera.position.addScaledVector(right, -speed);
+  if (keys["d"]) camera.position.addScaledVector(right, speed);
+
+  camera.lookAt(camera.position.clone().add(forward));
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>
